@@ -4,7 +4,8 @@ import { getItemFromDynamic } from './card.mjs';
 
 let deal = async (ctx) => {
 	const { uid } = ctx.req.param();
-	let dynSpaceResJson = await GetDynSpace(uid);
+	// 可选：wrangler secret put BILI_ACCESS_KEY 后自动携带 App 登录态，降低风控概率；不设置则匿名访问
+	let dynSpaceResJson = await GetDynSpace(uid, ctx.env.BILI_ACCESS_KEY || '');
 	let dynSpaceRes = JSON.parse(dynSpaceResJson);
 	let dynSpaceList = Array.isArray(dynSpaceRes.list) ? dynSpaceRes.list : [];
 	let items = [];
