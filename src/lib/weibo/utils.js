@@ -7,6 +7,31 @@ const weiboUtils = {
 		'User-Agent':
 			'Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1',
 	},
+	// 统一的微博移动端接口 GET：注入公共 header，并对非 2xx / 非 JSON 响应给出可读的错误信息
+	apiGet: async (ctx, url, { referer, uid } = {}) => {
+		const headers = {
+			Accept: 'application/json, text/plain, */*',
+			...weiboUtils.apiHeaders,
+		};
+		if (referer) {
+			headers.Referer = referer;
+		} else if (uid) {
+			headers.Referer = `https://m.weibo.cn/u/${uid}`;
+		}
+		const cookie = ctx?.env?.WEIBO_COOKIE;
+		if (cookie) {
+			headers.Cookie = cookie;
+		}
+		const response = await fetch(url, { headers });
+		if (!response.ok) {
+			throw new Error(`微博接口请求失败：HTTP ${response.status}（${url}）`);
+		}
+		try {
+			return await response.json();
+		} catch {
+			throw new Error(`微博接口返回非 JSON 内容，WEIBO_COOKIE 可能已失效（${url}）`);
+		}
+	},
 	resolveMblogBid: (item) => {
 		let bid = item?.mblog?.bid;
 		if (bid === '' && item.scheme) {
@@ -77,7 +102,7 @@ const weiboUtils = {
 			preferMobileLink: false,
 		};
 
-		params = mergedParams;
+		params = { ...mergedParams, ...params };
 
 		const {
 			readable,
@@ -290,8 +315,10 @@ const weiboUtils = {
 
 			html += retweeted;
 
-			if (readable) {
-				html += `<br><small>原博：<a href="https://weibo.com/${status.retweeted_status.user.id}/${status.retweeted_status.bid}" target="_blank" rel="noopener noreferrer">https://weibo.com/${status.retweeted_status.user.id}/${status.retweeted_status.bid}</a></small>`;
+			if (readable && status.retweeted_status.bid) {
+				// 被转发的微博被删除时 bid 可能缺失，此时无法构造原博链接
+				const retweetLink = `https://weibo.com/${status.retweeted_status.user.id}/${status.retweeted_status.bid}`;
+				html += `<br><small>原博：<a href="${retweetLink}" target="_blank" rel="noopener noreferrer">${retweetLink}</a></small>`;
 			}
 			if (showTimestampInDescription) {
 				html += `<br><small>` + new Date(status.retweeted_status.created_at).toLocaleString() + `</small>`;
@@ -322,7 +349,7 @@ const weiboUtils = {
 			title += ' ';
 			title += new Array(livePhotoCount + 1).join('[Live Photo]');
 		}
-		if (status.page_info && status.page_info === 'video') {
+		if (status.page_info?.type === 'video') {
 			title += ' [视频]';
 		}
 
@@ -338,14 +365,9 @@ const weiboUtils = {
 	},
 	getShowData: async (ctx, uid, bid) => {
 		const link = `https://m.weibo.cn/statuses/show?id=${bid}`;
-		const itemResponse = await fetch(link, {
-			headers: {
-				Referer: `https://m.weibo.cn/u/${uid}`,
-				Cookie: ctx.env.WEIBO_COOKIE || '',
-				...weiboUtils.apiHeaders,
-			},
-		}).then((res) => res.json());
-		return itemResponse.data.data;
+		// 微博被删除或接口异常时 payload.data 可能为空，返回 undefined 由调用方回落到卡片数据
+		const payload = await weiboUtils.apiGet(ctx, link, { uid });
+		return payload?.data?.data;
 	},
 	// 视频无法内嵌播放时的统一兜底：不解释原因，只给出常见错误代码 + 醒目的蓝色跳转按钮
 	// 常见错误代码：403（签名 URL 过期/防盗链）、415（媒体格式不支持，如 Live Photo）
@@ -388,6 +410,9 @@ const weiboUtils = {
 				}
 				video += '</video>';
 				anyVideo = true;
+			} else if (pageUrl) {
+				// 拿不到流地址（如受限视频、直播回放）时，同样给出错误代码与跳转按钮
+				itemDesc += video + weiboUtils.videoUnavailable(pageUrl, '403');
 			}
 		}
 		if (anyVideo) {
@@ -405,16 +430,10 @@ const weiboUtils = {
 			}
 			const articleId = articleIdMatch[1];
 			const link = `https://card.weibo.com/article/m/aj/detail?id=${articleId}`;
-			const response = await fetch(link, {
-				headers: {
-					Referer: `https://card.weibo.com/article/m/show/id/${articleId}`,
-					Cookie: ctx.env.WEIBO_COOKIE || '',
-					...weiboUtils.apiHeaders,
-				},
-			})
-				.then((res) => res.json())
-				.then((res) => res.data);
-			const article = response.data;
+			const payload = await weiboUtils.apiGet(ctx, link, {
+				referer: `https://card.weibo.com/article/m/show/id/${articleId}`,
+			});
+			const article = payload?.data?.data;
 			if (article && article.title && article.content) {
 				const title = article.title;
 				const content = article.content;
@@ -441,7 +460,7 @@ const weiboUtils = {
 				if (isOriginal) {
 					articleMeta += `<span style="${iconStyle}">原创</span> `;
 				}
-				articleMeta += `<span style="margin-inline: 0.25rem;">发布时间：${createAt}</span> `; // 发布时间
+				articleMeta += `<span style="margin-inline: 0.25rem;">发布时间：${createAt || ''}</span> `; // 发布时间
 				articleMeta += `<span style="margin-inline: 0.25rem;">阅读量：${readCount}</span> `; // 阅读量
 				articleMeta += '</p>';
 				html += articleMeta;
@@ -487,28 +506,28 @@ const weiboUtils = {
 			const id = status.id;
 			const mid = status.mid;
 			const link = `https://m.weibo.cn/comments/hotflow?id=${id}&mid=${mid}&max_id_type=0`;
-			const response = await fetch(link, {
-				headers: {
-					Referer: `https://m.weibo.cn/detail/${id}`,
-					Cookie: ctx.env.WEIBO_COOKIE || '',
-					...weiboUtils.apiHeaders,
-				},
-			})
-				.then((res) => res.json())
-				.then((res) => res.data);
-			if (response.data && response.data.data) {
-				const comments = response.data.data;
+			const payload = await weiboUtils.apiGet(ctx, link, {
+				referer: `https://m.weibo.cn/detail/${id}`,
+			});
+			const comments = payload?.data?.data;
+			if (comments) {
 				itemDesc += `<br clear="both" /><div style="clear: both"></div><div style="background: #80808010;border-top:1px solid #80808030;border-bottom:1px solid #80808030;margin:0;padding:5px 20px;">`;
 				itemDesc += '<h3>热门评论</h3>';
 				comments.forEach((comment) => {
+					if (!comment?.user) {
+						return; // 评论者注销后 user 可能为 null
+					}
 					itemDesc += '<p style="margin-bottom: 0.5em;margin-top: 0.5em">';
 					itemDesc += `<a href="https://weibo.com/${comment.user.id}" target="_blank">${comment.user.screen_name}</a>: ${comment.text}`;
 					if (comment.comments) {
 						itemDesc +=
 							'<blockquote style="border-left:0.2em solid #80808080; margin-left: 0.3em; padding-left: 0.5em; margin-bottom: 0.5em; margin-top: 0.25em">';
-						comment.comments.forEach((comment) => {
+						comment.comments.forEach((reply) => {
+							if (!reply?.user) {
+								return;
+							}
 							itemDesc += '<div style="font-size: 0.9em">';
-							itemDesc += `<a href="https://weibo.com/${comment.user.id}" target="_blank">${comment.user.screen_name}</a>: ${comment.text}`;
+							itemDesc += `<a href="https://weibo.com/${reply.user.id}" target="_blank">${reply.user.screen_name}</a>: ${reply.text}`;
 							itemDesc += '</div>';
 						});
 						itemDesc += '</blockquote>';
@@ -542,8 +561,10 @@ const weiboUtils = {
 		return (data) => {
 			if (data) {
 				replaceKV(data, dataKeys);
-				if (data.item) {
-					data.item.forEach((item) => {
+				// 兼容 `items`（本仓库 renderRss2/atom 模板使用）与 `item`（RSSHub 上游数据结构）两种键名
+				const entries = data.items || data.item;
+				if (entries) {
+					entries.forEach((item) => {
 						replaceKV(item, itemKeys);
 					});
 				}
