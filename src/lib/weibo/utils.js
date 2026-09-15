@@ -234,7 +234,7 @@ const weiboUtils = {
 						let video = `<video controls="controls" poster="${imageUrl || ''}"`;
 						video += ` src="${item.videoSrc}"`;
 						video += ' style="width: 100%">';
-						video += `<p>Live Photo 无法显示，请打开<a href="${item.videoSrc}" target="_blank" rel="noopener noreferrer">视频链接</a>观看。</p>`;
+						video += weiboUtils.videoUnavailable(item.videoSrc, '415');
 						video += '</video>';
 						html += video;
 					} else if (imageUrl) {
@@ -347,6 +347,10 @@ const weiboUtils = {
 		}).then((res) => res.json());
 		return itemResponse.data.data;
 	},
+	// 视频无法内嵌播放时的统一兜底：不解释原因，只给出常见错误代码 + 醒目的蓝色跳转按钮
+	// 常见错误代码：403（签名 URL 过期/防盗链）、415（媒体格式不支持，如 Live Photo）
+	videoUnavailable: (link, code = '403') =>
+		`<p style="margin: 8px 0;"><span style="font-family: Consolas, 'Courier New', monospace; background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322; border-radius: 4px; padding: 2px 8px; font-size: 0.9em; white-space: nowrap;">HTTP ${code}</span> <a href="${link}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1677ff; color: #ffffff; text-decoration: none; font-weight: bold; padding: 6px 18px; border-radius: 18px;">▶ 观看视频</a></p>`,
 	formatVideo: (itemDesc, status) => {
 		const pageInfo = status.page_info;
 		let video = '<br clear="both" /><div style="clear: both"></div>';
@@ -380,7 +384,7 @@ const weiboUtils = {
 					video += `<source src="${videoLd}">`;
 				}
 				if (pageUrl) {
-					video += `<p>视频无法显示，请前往<a href="${pageUrl}" target="_blank" rel="noopener noreferrer">微博视频</a>观看。</p>`;
+					video += weiboUtils.videoUnavailable(pageUrl, '403');
 				}
 				video += '</video>';
 				anyVideo = true;
