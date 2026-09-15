@@ -179,3 +179,144 @@ test('formatExtended extracts hashtag topics as item category', () => {
 
 	assert.equal(category, 'Topic One, 第二话题');
 });
+
+test('formatExtended marks video posts in title', () => {
+	const status = makeStatus([]);
+	status.page_info = { type: 'video', page_url: 'https://video.weibo.com/show?fid=1034:1' };
+
+	const { title } = weiboUtils.formatExtended({}, status, '2017083773');
+
+	assert.match(title, /\[视频\]/);
+});
+
+test('formatVideo falls back to error code and jump button when stream urls are missing', () => {
+	const status = {
+		page_info: {
+			type: 'video',
+			page_url: 'https://video.weibo.com/show?fid=1034:2',
+		},
+	};
+
+	const description = weiboUtils.formatVideo('', status);
+
+	assert.match(description, /HTTP 403/);
+	assert.match(description, /href="https:\/\/video\.weibo\.com\/show\?fid=1034:2"/);
+});
+
+test('sinaimgTvax rewrites wx hosts inside item descriptions', () => {
+	const data = {
+		description: 'https://wx1.sinaimg.cn/mw2000/a.jpg',
+		items: [{ description: '<img src="https://wx2.sinaimg.cn/orj480/b.jpg">' }],
+	};
+
+	const rewritten = weiboUtils.sinaimgTvax(data);
+
+	assert.equal(rewritten.description, 'https://tvax1.sinaimg.cn/mw2000/a.jpg');
+	assert.equal(rewritten.items[0].description, '<img src="https://tvax2.sinaimg.cn/orj480/b.jpg">');
+});
+
+test('sinaimgTvax keeps supporting the upstream `item` key', () => {
+	const data = { item: [{ description: 'https://wx3.sinaimg.cn/c.jpg' }] };
+
+	const rewritten = weiboUtils.sinaimgTvax(data);
+
+	assert.equal(rewritten.item[0].description, 'https://tvax3.sinaimg.cn/c.jpg');
+});
+
+test('formatExtended shows retweet author and omits original link when bid is missing', () => {
+	const status = makeStatus([]);
+	status.retweeted_status = {
+		created_at: 'Mon May 25 00:00:00 +0800 2026',
+		user: { id: '42', screen_name: 'origin', profile_image_url: '' },
+		text: 'origin text',
+	};
+
+	const { description } = weiboUtils.formatExtended({}, status, '2017083773');
+
+	const blockquote = description.slice(description.indexOf('<blockquote'), description.indexOf('</blockquote>'));
+	assert.match(blockquote, /@origin/);
+	assert.ok(!description.includes('undefined'));
+});
+
+test('formatExtended links to the original weibo when retweet bid exists', () => {
+	const status = makeStatus([]);
+	status.retweeted_status = {
+		bid: 'ABCDEF',
+		created_at: 'Mon May 25 00:00:00 +0800 2026',
+		user: { id: '42', screen_name: 'origin', profile_image_url: '' },
+		text: 'origin text',
+	};
+
+	const { description } = weiboUtils.formatExtended({}, status, '2017083773');
+
+	assert.match(description, /https:\/\/weibo\.com\/42\/ABCDEF/);
+});
+
+const withFetch = async (stub, run) => {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = stub;
+	try {
+		await run();
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+};
+
+test('getShowData returns undefined when API payload is empty', async () => {
+	await withFetch(
+		async () => ({ ok: true, json: async () => ({ ok: 0, data: null }) }),
+		async () => {
+			const ctx = { env: { WEIBO_COOKIE: 'SUB=x' } };
+			assert.equal(await weiboUtils.getShowData(ctx, '123', 'ABC'), undefined);
+		},
+	);
+});
+
+test('apiGet throws descriptive errors for non-JSON responses', async () => {
+	await withFetch(
+		async () => ({
+			ok: true,
+			json: async () => {
+				throw new SyntaxError('Unexpected token < in JSON');
+			},
+		}),
+		async () => {
+			const ctx = { env: {} };
+			await assert.rejects(() => weiboUtils.apiGet(ctx, 'https://m.weibo.cn/x'), /非 JSON/);
+		},
+	);
+});
+
+test('apiGet throws for HTTP failures', async () => {
+	await withFetch(
+		async () => ({ ok: false, status: 418 }),
+		async () => {
+			const ctx = { env: {} };
+			await assert.rejects(() => weiboUtils.apiGet(ctx, 'https://m.weibo.cn/x'), /HTTP 418/);
+		},
+	);
+});
+
+test('formatComments skips comments whose user is gone', async () => {
+	await withFetch(
+		async () => ({
+			ok: true,
+			json: async () => ({
+				ok: 1,
+				data: {
+					data: [
+						{ id: 1, user: null, text: 'gone' },
+						{ id: 2, user: { id: '7', screen_name: 'u7' }, text: 'hello' },
+					],
+				},
+			}),
+		}),
+		async () => {
+			const ctx = { env: {} };
+			const status = { comments_count: 2, id: '1', mid: '1' };
+			const description = await weiboUtils.formatComments(ctx, '', status);
+			assert.match(description, /u7/);
+			assert.ok(!description.includes('undefined'));
+		},
+	);
+});
