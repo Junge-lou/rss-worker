@@ -1,13 +1,19 @@
 import { renderRss2 } from '../../../utils/util';
-import { GetDynSpace } from '../grpc_helper';
 import { getItemFromDynamic } from './card.mjs';
+import { getDynSpaceList, matchCache, putCache } from './feed_cache.mjs';
 
 let deal = async (ctx) => {
 	const { uid } = ctx.req.param();
 	// 可选：wrangler secret put BILI_ACCESS_KEY 后自动携带 App 登录态，降低风控概率；不设置则匿名访问
-	let dynSpaceResJson = await GetDynSpace(uid, ctx.env.BILI_ACCESS_KEY || '');
-	let dynSpaceRes = JSON.parse(dynSpaceResJson);
-	let dynSpaceList = Array.isArray(dynSpaceRes.list) ? dynSpaceRes.list : [];
+	let dynSpaceList = await getDynSpaceList(uid, ctx.env.BILI_ACCESS_KEY || '');
+	// 上游偶发返回空列表：回退到最近一次成功的内容，避免阅读器订阅/刷新拿到空 feed
+	if (dynSpaceList.length === 0) {
+		const cached = await matchCache(ctx);
+		if (cached) {
+			ctx.header('x-feed-cache', 'hit');
+			return ctx.body(await cached.text());
+		}
+	}
 	let items = [];
 	let globalUsername = '';
 	if (dynSpaceList.length !== 0) {
@@ -30,6 +36,9 @@ let deal = async (ctx) => {
 	};
 	let rss = renderRss2(data);
 	ctx.header('Content-Type', 'application/xml');
+	if (dynSpaceList.length !== 0) {
+		await putCache(ctx, `${rss}`);
+	}
 	return ctx.body(`${rss}`);
 };
 
