@@ -72,10 +72,12 @@ test('getItemFromDynamic keeps forwarding av cards to the av builder', () => {
 	assert.equal(item.link, 'https://www.bilibili.com/video/BV1xx411c7mD');
 });
 
-test('getItemFromDynamicAv points iframe to worker player page when origin is given', () => {
-	const item = getItemFromDynamicAv(makeAvCard(), 'https://rss-worker.example.workers.dev');
+test('getItemFromDynamicAv always embeds the official player directly (no workers.dev hop)', () => {
+	const item = getItemFromDynamicAv(makeAvCard());
 
-	// description 处于 CDATA 中，& 无需转义
-	assert.match(item.description, /src="https:\/\/rss-worker\.example\.workers\.dev\/rss\/bilibili\/player\/BV1xx411c7mD\?cid=456&autoplay=0"/);
-	assert.ok(!item.description.includes('player.bilibili.com/player.html'));
+	assert.ok(item.description.includes('player.bilibili.com/player.html'), 'iframe should point at the official embed');
+	assert.ok(!item.description.includes('workers.dev'), 'playback must not depend on workers.dev reachability');
+	assert.ok(!item.description.includes('/rss/bilibili/player/'), 'no middleman hop in fresh items');
+	assert.ok(item.description.includes('high_quality=1'), 'starts at best available quality');
+	assert.ok(item.description.includes('danmaku=0'), 'hides the danmaku login bar');
 });

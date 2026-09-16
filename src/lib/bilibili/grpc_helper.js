@@ -3,8 +3,6 @@ import { Locale } from './gen/bilibili/metadata/locale/locale_pb.js';
 import { Network, NetworkType } from './gen/bilibili/metadata/network/network_pb.js';
 import { Metadata } from './gen/bilibili/metadata/metadata_pb.js';
 import { DynSpaceReq, DynSpaceRsp } from './gen/bilibili/app/dynamic/v2/dynamic_pb.js';
-import { PlayURLReq, PlayURLReply } from './gen/bilibili/app/playurl/v1/playurl_pb.js';
-import { ViewReq, ViewReply } from './gen/bilibili/app/view/v1/view_pb.js';
 import forge from 'node-forge/lib/index.js';
 import { connect } from 'cloudflare:sockets';
 import {
@@ -27,8 +25,6 @@ var HPACK = require('hpack');
 
 const GRPC_HOST = 'grpc.biliapi.net';
 const DYN_SPACE_PATH = '/bilibili.app.dynamic.v2.Dynamic/DynSpace';
-const PLAY_URL_PATH = '/bilibili.app.playurl.v1.PlayURL/PlayURL';
-const VIEW_PATH = '/bilibili.app.view.v1.View/View';
 const GRPC_TIMEOUT_MS = 10000;
 
 let U8ToBase64 = function (u8) {
@@ -323,31 +319,4 @@ let GetDynSpace = async (uid, accessKey = '') => {
 	return dynSpaceRsp.toJsonString();
 };
 
-// App 端 DASH 播放地址（配 BILI_ACCESS_KEY 可解锁大会员档位；网页 API 在 CF 机房 IP 会被风控）
-let GetPlayUrl = async (aid, cid, accessKey = '', opts = {}) => {
-	let req_bin = new PlayURLReq({
-		aid: BigInt(aid || 0),
-		cid: BigInt(cid),
-		qn: opts.qn ?? 120,
-		fnval: opts.fnval ?? 16,
-		fourk: opts.fourk ?? true,
-		spmid: opts.spmid || '',
-	}).toBinary();
-	let rsp_bin = await requestGrpcUnaryWithRetry(PLAY_URL_PATH, getHeaders(accessKey), req_bin);
-	let reply = new PlayURLReply();
-	reply.fromBinary(rsp_bin);
-	return reply;
-};
-
-// 通过 gRPC View 接口取稿件 aid 与分 P cid（替代被风控的网页 view API）
-let GetViewAidCid = async (bvid, accessKey = '') => {
-	let req_bin = new ViewReq({ bvid }).toBinary();
-	let rsp_bin = await requestGrpcUnaryWithRetry(VIEW_PATH, getHeaders(accessKey), req_bin);
-	let reply = new ViewReply();
-	reply.fromBinary(rsp_bin);
-	const aid = reply.arc?.aid !== undefined ? String(reply.arc.aid) : undefined;
-	const cid = reply.pages?.[0]?.page?.cid !== undefined ? String(reply.pages[0].page.cid) : undefined;
-	return { aid, cid };
-};
-
-export { GetDynSpace, GetPlayUrl, GetViewAidCid };
+export { GetDynSpace };
