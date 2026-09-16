@@ -17,8 +17,13 @@ let toProxyUrl = (url, origin) => `${origin}/rss/bilibili/stream?u=${toBase64Url
 let escXml = (s) =>
 	String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const CODEC_PREFERENCE = (codecs = '') =>
-	codecs.startsWith('avc1') ? 3 : codecs.startsWith('hev1') || codecs.startsWith('hvc1') ? 2 : codecs.startsWith('av01') ? 1 : 0;
+// B 站 codecid → MSE 兼容的 codecs 字符串（gRPC DashItem 只带数字 codecid；字符串为常用档，浏览器会从流中嗅探真实参数）
+const CODEC_BY_CODECID = { 7: 'avc1.640032', 12: 'hvc1.1.6.L123.00', 13: 'av01.0.08M.08' };
+
+const CODEC_PREFERENCE = (r) => {
+	const c = r.codecs || CODEC_BY_CODECID[r.codecid] || '';
+	return c.startsWith('avc1') ? 3 : c.startsWith('hev1') || c.startsWith('hvc1') ? 2 : c.startsWith('av01') ? 1 : 0;
+};
 
 // 由 playurl(fnval=16) 的 data 构造极简 MPD：
 // - 视频轨按清晰度去重、编解码优先 avc1，清晰度从高到低
@@ -32,7 +37,7 @@ let buildMpd = (data, { origin }) => {
 	const byQuality = new Map();
 	for (const v of dash.video || []) {
 		const prev = byQuality.get(v.id);
-		if (!prev || CODEC_PREFERENCE(v.codecs) > CODEC_PREFERENCE(prev.codecs)) {
+		if (!prev || CODEC_PREFERENCE(v) > CODEC_PREFERENCE(prev)) {
 			byQuality.set(v.id, v);
 		}
 	}
@@ -48,8 +53,9 @@ let buildMpd = (data, { origin }) => {
 			kind === 'video'
 				? ` width="${r.width || 0}" height="${r.height || 0}"${r.frame_rate ? ` frameRate="${escXml(r.frame_rate)}"` : ''}`
 				: '';
+		const codecs = r.codecs || CODEC_BY_CODECID[r.codecid] || '';
 		const backups = (r.backup_url || []).map((b) => `<BaseURL>${escXml(toProxyUrl(b, origin))}</BaseURL>`).join('');
-		return `<Representation id="${kind}${r.id}" bandwidth="${r.bandwidth || 0}" codecs="${escXml(r.codecs || '')}"${size}><BaseURL>${escXml(toProxyUrl(r.base_url, origin))}</BaseURL>${backups}${seg}</Representation>`;
+		return `<Representation id="${kind}${r.id}" bandwidth="${r.bandwidth || 0}" codecs="${escXml(codecs)}"${size}><BaseURL>${escXml(toProxyUrl(r.base_url, origin))}</BaseURL>${backups}${seg}</Representation>`;
 	};
 
 	const videoXml = videos.map((r) => repXml(r, 'v')).join('');
