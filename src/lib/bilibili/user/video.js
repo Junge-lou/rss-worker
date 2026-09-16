@@ -15,11 +15,12 @@ let deal = async (ctx) => {
 	} else {
 		globalUsername = uid;
 	}
+	const origin = new URL(ctx.req.url).origin;
 	for (let card of dynSpaceList) {
 		if (card.cardType !== 'av') {
 			continue;
 		}
-		let item = getItemFromDynamic(card);
+		let item = getItemFromDynamic(card, origin);
 		items.push(item);
 	}
 
