@@ -34,7 +34,7 @@ test('getItemFromDynamicAv links to the video page and embeds the player', () =>
 
 	assert.equal(item.link, 'https://www.bilibili.com/video/BV1xx411c7mD');
 	assert.equal(item.title, '视频标题');
-	assert.match(item.description, /player\.bilibili\.com\/player\.html\?aid=123&bvid=BV1xx411c7mD&cid=456&page=1&autoplay=0/);
+	assert.match(item.description, /player\.bilibili\.com\/player\.html\?aid=123&bvid=BV1xx411c7mD&cid=456&page=1&high_quality=1&danmaku=0&autoplay=0/);
 	assert.match(item.description, /archive\/new_cover\.jpg/);
 	assert.match(item.description, /动态附言/);
 	assert.equal(item.author, 'uploader');
@@ -63,7 +63,7 @@ test('getItemFromDynamicAv falls back to avid when bvid is missing', () => {
 	const item = getItemFromDynamicAv(card);
 
 	assert.equal(item.link, 'https://www.bilibili.com/video/av123');
-	assert.match(item.description, /player\.bilibili\.com\/player\.html\?aid=123&page=1&autoplay=0/);
+	assert.match(item.description, /player\.bilibili\.com\/player\.html\?aid=123&page=1&high_quality=1&danmaku=0&autoplay=0/);
 });
 
 test('getItemFromDynamic keeps forwarding av cards to the av builder', () => {

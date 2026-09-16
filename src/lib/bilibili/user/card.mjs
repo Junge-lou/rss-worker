@@ -89,7 +89,7 @@ let buildPlayerIframe = (archive, origin) => {
 		if (archive.cid) {
 			params.push(`cid=${archive.cid}`);
 		}
-		params.push('page=1', 'autoplay=0');
+		params.push('page=1', 'high_quality=1', 'danmaku=0', 'autoplay=0');
 		return `<iframe src="https://player.bilibili.com/player.html?${params.join('&')}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
 	};
 	if (origin && archive.bvid) {

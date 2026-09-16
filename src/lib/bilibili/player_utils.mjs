@@ -72,11 +72,17 @@ const DASHJS_CDNS = [
 	'https://cdn.bootcdn.net/ajax/libs/dashjs/4.7.4/dash.all.min.js',
 ];
 
+// 与 RSSHub 一致的官方嵌入参数：
+// - high_quality=1 直接按游客最高档（720P）起播，不弹清晰度菜单
+// - danmaku=0 隐藏弹幕栏（未登录时弹幕栏上就是显眼的"登录"按钮）
+let officialPlayerUrl = (bvid, autoplay) =>
+	`https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&page=1&high_quality=1&danmaku=0&autoplay=${autoplay ? 1 : 0}`;
+
 let playerPageHtml = ({ mpd, bvid, autoplay, qualityLabel }) => {
 	const mpdB64 = toBase64Url(unescape(encodeURIComponent(mpd)));
 	const cdnsJson = JSON.stringify(DASHJS_CDNS);
 	const autoplayFlag = autoplay ? 'true' : 'false';
-	const official = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&autoplay=0`;
+	const official = officialPlayerUrl(bvid, autoplay);
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -134,17 +140,16 @@ function initPlayer() {
 </html>`;
 };
 
-// 未配置凭证 / playurl 失败时的兜底页：官方 iframe（游客 720P）+ 原视频页链接
-let fallbackPageHtml = ({ bvid, autoplay, note }) => {
-	const official = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&autoplay=0`;
+// 未配置凭证 / playurl 失败（含出口 IP 被 B 站限流）时的兜底页：
+// 与 RSSHub 完全一致的纯官方播放器 iframe——整页就是播放器，点击即播，不带任何附加 UI
+let fallbackPageHtml = ({ bvid, autoplay }) => {
 	return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escXml(bvid)}</title>
-<style>html,body{margin:0;height:100%;background:#000;color:#ccc;font:14px/1.6 system-ui,sans-serif}iframe{width:100%;height:100%;border:0}#n{position:fixed;inset:auto 0 8px 0;text-align:center;color:#89a}</style>
+<style>html,body{margin:0;height:100%;background:#000}iframe{width:100%;height:100%;border:0}</style>
 </head><body>
-<iframe src="${official}" allowfullscreen></iframe>
-<div id="n">高画质不可用（${escXml(note || 'unknown')}），已回落官方播放器 · <a style="color:#8cf" href="https://www.bilibili.com/video/${escXml(bvid)}" target="_blank">打开视频页</a></div>
+<iframe src="${officialPlayerUrl(bvid, autoplay)}" allowfullscreen></iframe>
 </body></html>`;
 };
 
-export { isAllowedStreamHost, toBase64Url, fromBase64Url, toProxyUrl, buildMpd, playerPageHtml, fallbackPageHtml, DASHJS_CDNS };
+export { isAllowedStreamHost, toBase64Url, fromBase64Url, toProxyUrl, buildMpd, playerPageHtml, fallbackPageHtml, officialPlayerUrl, DASHJS_CDNS };
