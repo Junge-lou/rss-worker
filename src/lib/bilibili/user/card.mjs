@@ -74,32 +74,26 @@ let getItemFromDynamicForward = (card) => {
 	};
 };
 
-// 构造播放器 iframe：
-// - 有 origin 时指向 worker 自建播放器页（服务端带凭证拉大会员档 DASH 流）
-// - 否则回落 B 站官方 iframe（游客身份，最高 720P）
-let buildPlayerIframe = (archive, origin) => {
-	const official = () => {
-		const params = [];
-		if (archive.avid) {
-			params.push(`aid=${archive.avid}`);
-		}
-		if (archive.bvid) {
-			params.push(`bvid=${archive.bvid}`);
-		}
-		if (archive.cid) {
-			params.push(`cid=${archive.cid}`);
-		}
-		params.push('page=1', 'high_quality=1', 'danmaku=0', 'autoplay=0');
-		return `<iframe src="https://player.bilibili.com/player.html?${params.join('&')}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
-	};
-	if (origin && archive.bvid) {
-		const q = new URLSearchParams({ cid: String(archive.cid || ''), autoplay: '0' });
-		return `<iframe src="${origin}/rss/bilibili/player/${archive.bvid}?${q.toString()}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
+// 构造 B 站官方播放器 iframe（RSSHub 同款参数），直连 player.bilibili.com：
+// - 不经 workers.dev 中转——部分网络无法访问 workers.dev，中转会直接导致无画面
+// - high_quality=1 按最高可用档起播；danmaku=0 隐藏弹幕栏（未登录时不露"登录"按钮）
+// - 画质取决于观看者浏览器的 IP 与登录态：国内直连 + 已登录可达 1080P60
+let buildPlayerIframe = (archive) => {
+	const params = [];
+	if (archive.avid) {
+		params.push(`aid=${archive.avid}`);
 	}
-	return official();
+	if (archive.bvid) {
+		params.push(`bvid=${archive.bvid}`);
+	}
+	if (archive.cid) {
+		params.push(`cid=${archive.cid}`);
+	}
+	params.push('page=1', 'high_quality=1', 'danmaku=0', 'autoplay=0');
+	return `<iframe src="https://player.bilibili.com/player.html?${params.join('&')}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
 };
 
-let getItemFromDynamicAv = (card, origin) => {
+let getItemFromDynamicAv = (card) => {
 	let pubDate = new Date().toUTCString();
 	let guid = `https://t.bilibili.com/${card.extend.dynIdStr}`;
 	let author = '';
@@ -132,7 +126,7 @@ let getItemFromDynamicAv = (card, origin) => {
 	let description = '';
 	if (archive?.bvid || archive?.avid) {
 		link = archive.bvid ? `https://www.bilibili.com/video/${archive.bvid}` : `https://www.bilibili.com/video/av${archive.avid}`;
-		description += buildPlayerIframe(archive, origin) + '<br/>';
+		description += buildPlayerIframe(archive) + '<br/>';
 	}
 	const cover = archive?.cover || card.extend?.origImgUrl;
 	if (cover) {
@@ -247,7 +241,7 @@ let getItemFromPaidDynamic = (card) => {
 	};
 };
 
-let getItemFromDynamic = (card, origin) => {
+let getItemFromDynamic = (card) => {
 	if (card.extend?.onlyFansProperty?.isOnlyFans) {
 		return getItemFromPaidDynamic(card);
 	}
@@ -255,7 +249,7 @@ let getItemFromDynamic = (card, origin) => {
 		case 'forward':
 			return getItemFromDynamicForward(card);
 		case 'av':
-			return getItemFromDynamicAv(card, origin);
+			return getItemFromDynamicAv(card);
 		case 'draw':
 			return getItemFromDynamicDraw(card);
 		default:
