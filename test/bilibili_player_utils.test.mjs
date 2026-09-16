@@ -63,10 +63,11 @@ test('playerPageHtml embeds mpd and dashjs cdn chain', () => {
 	assert.match(html, /player\.initialize\(document\.getElementById\('v'\), url, false\)/);
 });
 
-test('fallbackPageHtml points to official player and video page', () => {
-	const html = fallbackPageHtml({ bvid: 'BV1xx411c7mD', note: 'test' });
+test('fallbackPageHtml is a pure official player embed, RSSHub style', () => {
+	const html = fallbackPageHtml({ bvid: 'BV1xx411c7mD' });
 
-	assert.match(html, /player\.bilibili\.com\/player\.html\?bvid=BV1xx411c7mD/);
-	assert.match(html, /www\.bilibili\.com\/video\/BV1xx411c7mD/);
-	assert.match(html, /test/);
+	assert.match(html, /player\.bilibili\.com\/player\.html\?bvid=BV1xx411c7mD&page=1&high_quality=1&danmaku=0&autoplay=0/);
+	assert.ok(!html.includes('高画质不可用'), 'no note bar');
+	assert.ok(!html.includes('打开视频页'), 'no extra link');
+	assert.ok(!html.includes('登录'), 'no login UI of our own');
 });

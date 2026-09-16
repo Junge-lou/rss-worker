@@ -69,7 +69,7 @@ let deal = async (ctx) => {
 		const mpd = buildMpd(data, { origin });
 		return ctx.html(playerPageHtml({ mpd, bvid, autoplay, qualityLabel }));
 	} catch (e) {
-		return ctx.html(fallbackPageHtml({ bvid, autoplay, note: String(e.message || e) }));
+		return ctx.html(fallbackPageHtml({ bvid, autoplay }));
 	}
 };
 
