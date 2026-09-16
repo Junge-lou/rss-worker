@@ -74,23 +74,32 @@ let getItemFromDynamicForward = (card) => {
 	};
 };
 
-// 构造 B 站官方播放器 iframe（与 RSSHub 一致），阅读器中可直接内嵌播放
-let buildPlayerIframe = (archive) => {
-	const params = [];
-	if (archive.avid) {
-		params.push(`aid=${archive.avid}`);
+// 构造播放器 iframe：
+// - 有 origin 时指向 worker 自建播放器页（服务端带凭证拉大会员档 DASH 流）
+// - 否则回落 B 站官方 iframe（游客身份，最高 720P）
+let buildPlayerIframe = (archive, origin) => {
+	const official = () => {
+		const params = [];
+		if (archive.avid) {
+			params.push(`aid=${archive.avid}`);
+		}
+		if (archive.bvid) {
+			params.push(`bvid=${archive.bvid}`);
+		}
+		if (archive.cid) {
+			params.push(`cid=${archive.cid}`);
+		}
+		params.push('page=1', 'autoplay=0');
+		return `<iframe src="https://player.bilibili.com/player.html?${params.join('&')}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
+	};
+	if (origin && archive.bvid) {
+		const q = new URLSearchParams({ cid: String(archive.cid || ''), autoplay: '0' });
+		return `<iframe src="${origin}/rss/bilibili/player/${archive.bvid}?${q.toString()}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
 	}
-	if (archive.bvid) {
-		params.push(`bvid=${archive.bvid}`);
-	}
-	if (archive.cid) {
-		params.push(`cid=${archive.cid}`);
-	}
-	params.push('page=1', 'autoplay=0');
-	return `<iframe src="https://player.bilibili.com/player.html?${params.join('&')}" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>`;
+	return official();
 };
 
-let getItemFromDynamicAv = (card) => {
+let getItemFromDynamicAv = (card, origin) => {
 	let pubDate = new Date().toUTCString();
 	let guid = `https://t.bilibili.com/${card.extend.dynIdStr}`;
 	let author = '';
@@ -123,7 +132,7 @@ let getItemFromDynamicAv = (card) => {
 	let description = '';
 	if (archive?.bvid || archive?.avid) {
 		link = archive.bvid ? `https://www.bilibili.com/video/${archive.bvid}` : `https://www.bilibili.com/video/av${archive.avid}`;
-		description += buildPlayerIframe(archive) + '<br/>';
+		description += buildPlayerIframe(archive, origin) + '<br/>';
 	}
 	const cover = archive?.cover || card.extend?.origImgUrl;
 	if (cover) {
@@ -238,7 +247,7 @@ let getItemFromPaidDynamic = (card) => {
 	};
 };
 
-let getItemFromDynamic = (card) => {
+let getItemFromDynamic = (card, origin) => {
 	if (card.extend?.onlyFansProperty?.isOnlyFans) {
 		return getItemFromPaidDynamic(card);
 	}
@@ -246,7 +255,7 @@ let getItemFromDynamic = (card) => {
 		case 'forward':
 			return getItemFromDynamicForward(card);
 		case 'av':
-			return getItemFromDynamicAv(card);
+			return getItemFromDynamicAv(card, origin);
 		case 'draw':
 			return getItemFromDynamicDraw(card);
 		default:

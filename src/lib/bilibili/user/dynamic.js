@@ -15,8 +15,10 @@ let deal = async (ctx) => {
 	} else {
 		globalUsername = uid;
 	}
+	// 用请求自身的 origin 构造自建播放器页地址（兼容 workers.dev 与自定义域名）
+	const origin = new URL(ctx.req.url).origin;
 	for (let card of dynSpaceList) {
-		let item = getItemFromDynamic(card);
+		let item = getItemFromDynamic(card, origin);
 		items.push(item);
 	}
 
