@@ -3,34 +3,36 @@ import { renderRss2 } from '../../utils/util';
 
 let deal = async (ctx) => {
 	const { uid } = ctx.req.param();
-	let displayVideo = '1';
-	let displayArticle = '0';
-	let displayComments = '0';
+	// 可通过 query 参数控制展示项，如 /weibo/user/:uid?displayComments=1&displayArticle=1&displayVideo=0
+	const displayVideo = ctx.req.query('displayVideo') ?? '1';
+	const displayArticle = ctx.req.query('displayArticle') ?? '0';
+	const displayComments = ctx.req.query('displayComments') ?? '0';
 
-	const containerData = await fetch(`https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}`, {
-		headers: {
-			Referer: `https://m.weibo.cn/u/${uid}`,
-			Cookie: ctx.env.WEIBO_COOKIE || '',
-			Accept: 'application/json, text/plain, */*',
-			...weiboUtils.apiHeaders,
-		},
-	}).then((res) => res.json());
+	const containerData = await weiboUtils.apiGet(ctx, `https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}`, {
+		uid,
+	});
 
-	const name = containerData.data.userInfo.screen_name;
-	const description = containerData.data.userInfo.description;
-	const profileImageUrl = containerData.data.userInfo.profile_image_url;
-	const containerId = containerData.data.tabsInfo.tabs.filter((item) => item.tab_type === 'weibo')[0].containerid;
+	// 接口对无效 uid / 失效 Cookie 会返回 ok:0 或空数据，提前给出可读错误而不是 TypeError
+	const userInfo = containerData?.data?.userInfo;
+	if (!userInfo?.screen_name) {
+		throw new Error(`获取用户信息失败，请检查 uid 或 WEIBO_COOKIE 是否有效（uid: ${uid}）`);
+	}
+	const weiboTab = containerData.data.tabsInfo?.tabs?.find((item) => item.tab_type === 'weibo');
+	if (!weiboTab?.containerid) {
+		throw new Error(`获取用户微博容器失败，该用户可能不存在或已被封禁（uid: ${uid}）`);
+	}
 
-	const cards = await fetch(`https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}&containerid=${containerId}`, {
-		headers: {
-			Referer: `https://m.weibo.cn/u/${uid}`,
-			Cookie: ctx.env.WEIBO_COOKIE || '',
-			Accept: 'application/json, text/plain, */*',
-			...weiboUtils.apiHeaders,
-		},
-	})
-		.then((res) => res.json())
-		.then((res) => res.data.cards);
+	const name = userInfo.screen_name;
+	const description = userInfo.description;
+	const profileImageUrl = userInfo.profile_image_url;
+	const containerId = weiboTab.containerid;
+
+	const cardsPayload = await weiboUtils.apiGet(
+		ctx,
+		`https://m.weibo.cn/api/container/getIndex?type=uid&value=${uid}&containerid=${containerId}`,
+		{ uid },
+	);
+	const cards = cardsPayload?.data?.cards || [];
 
 	let resultItems = await Promise.all(
 		cards
