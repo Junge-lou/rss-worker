@@ -42,7 +42,7 @@ let getRandomBuvid = () => {
 
 let getBilibiliMetadata = (accessKey, buvid) => {
 	const METADATA = {
-		// accessKey: accessKey,
+		access_key: accessKey,
 		mobiApp: 'android',
 		device: 'phone',
 		build: 7490200,
@@ -296,18 +296,10 @@ let requestGrpcUnary = async (path, headers, body) => {
 	});
 };
 
-let GetDynSpace = async (uid, accessKey = '') => {
-	let req_bin = new DynSpaceReq({
-		hostUid: uid,
-	}).toBinary();
-	let headers = getHeaders(accessKey);
-	let retry_max = 3;
+let requestGrpcUnaryWithRetry = async (path, headers, req_bin, retry_max = 3) => {
 	for (let i = 0; i < retry_max; i++) {
 		try {
-			let rsp_bin = await requestGrpcUnary(DYN_SPACE_PATH, headers, encodeGrpcMessage(req_bin));
-			let dynSpaceRsp = new DynSpaceRsp();
-			dynSpaceRsp.fromBinary(rsp_bin);
-			return dynSpaceRsp.toJsonString();
+			return await requestGrpcUnary(path, headers, encodeGrpcMessage(req_bin));
 		} catch (e) {
 			if (e.grpcStatus !== undefined || i === retry_max - 1) {
 				throw e;
@@ -315,6 +307,16 @@ let GetDynSpace = async (uid, accessKey = '') => {
 			console.log(`[grpc] retry ${i + 1}/${retry_max - 1}: ${e.message}`);
 		}
 	}
+};
+
+let GetDynSpace = async (uid, accessKey = '') => {
+	let req_bin = new DynSpaceReq({
+		hostUid: uid,
+	}).toBinary();
+	let rsp_bin = await requestGrpcUnaryWithRetry(DYN_SPACE_PATH, getHeaders(accessKey), req_bin);
+	let dynSpaceRsp = new DynSpaceRsp();
+	dynSpaceRsp.fromBinary(rsp_bin);
+	return dynSpaceRsp.toJsonString();
 };
 
 export { GetDynSpace };
